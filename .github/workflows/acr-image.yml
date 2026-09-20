@@ -67,6 +67,11 @@ jobs:
               with:
                   context: .
                   push: true
+                  # ACR 个人版无法识别 attestation 生成的 OCI image index
+                  # （报 denied: unknown manifest class for application/vnd.oci.empty.v1+json），
+                  # 关掉后推送的是单个 Docker v2s2 manifest。
+                  provenance: false
+                  sbom: false
                   tags: |
                       ${{ env.REGISTRY }}/${{ env.IMAGE }}:latest
                       ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ steps.tags.outputs.version }}
