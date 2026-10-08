@@ -27,21 +27,28 @@ jobs:
                   ref: ${{ env.BRANCH }}
                   fetch-depth: 0
 
-            # 只有当 fork 是上游的祖先时才快进合并并推回；一旦你在 fork 上有自己的
-            # 提交造成分叉，就退回到「按 fork 当前代码构建」，绝不自动改写历史。
+            # 同步上游：能合就合（真实的 merge，不只是快进），有冲突就放弃合并、
+            # 照旧按 fork 当前代码构建。绝不 force push、绝不改写历史。
+            # 注意：fork 上有本工作流自身的提交，因此"仅快进"的条件永不成立，
+            # 必须用 merge 才能持续吸收上游更新。
             - name: Sync upstream
               run: |
                   set -euo pipefail
                   git config user.name 'github-actions[bot]'
                   git config user.email '418982825+github-actions[bot]@users.noreply.github.com'
-                  git remote add upstream 'https://github.com/${{ env.UPSTREAM }}.git'
-                  git fetch -q upstream "$BRANCH"
-                  if git merge-base --is-ancestor HEAD "upstream/$BRANCH"; then
-                      git merge --ff-only -q "upstream/$BRANCH"
+                  # 直接按 URL fetch，不注册 remote：一次性 runner 上无所谓，但
+                  # self-hosted runner 会复用工作目录，git remote add 第二次会撞名退出。
+                  git fetch -q 'https://github.com/${{ env.UPSTREAM }}.git' "refs/heads/$BRANCH"
+                  if git merge-base --is-ancestor FETCH_HEAD HEAD; then
+                      echo "上游无新提交（或已包含在当前代码中），按现状构建"
+                  elif git merge --no-edit -q FETCH_HEAD; then
+                      echo "已合并上游提交："
+                      git log --oneline --no-merges --max-count=20 'HEAD^1..HEAD^2'
                       git push -q origin "HEAD:refs/heads/$BRANCH"
-                      echo "已快进合并上游最新提交"
+                      echo "已推回 fork"
                   else
-                      echo "fork 与上游已分叉或上游无新提交，按 fork 当前代码构建"
+                      git merge --abort
+                      echo "与上游存在冲突，放弃本次合并；按 fork 当前代码构建"
                   fi
 
             - name: Compute tags
